@@ -1,0 +1,31 @@
+{
+	"bmi-installation" : null,
+	"compiler-frontend-variant" : "GNU",
+	"compiler-id" : "GNU",
+	"compiler-simulate-id" : "",
+	"config" : "",
+	"cxx-modules" : {},
+	"database-info" : null,
+	"dir-cur-bld" : "C:/Users/NOBTG/Documents/Projects/JNILibrary/build_ninja",
+	"dir-cur-src" : "C:/Users/NOBTG/Documents/Projects/JNILibrary",
+	"dir-top-bld" : "C:/Users/NOBTG/Documents/Projects/JNILibrary/build_ninja",
+	"dir-top-src" : "C:/Users/NOBTG/Documents/Projects/JNILibrary",
+	"exports" : [],
+	"forward-modules-from-target-dirs" : [],
+	"include-dirs" : 
+	[
+		"C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.15.6-hotspot\\include",
+		"C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.15.6-hotspot\\include\\win32"
+	],
+	"language" : "CXX",
+	"linked-target-dirs" : [],
+	"module-dir" : "C:/Users/NOBTG/Documents/Projects/JNILibrary/build_ninja/CMakeFiles/org_example_Main.dir",
+	"sources" : 
+	{
+		"CMakeFiles/org_example_Main.dir/org_example_Main.cpp.obj" : 
+		{
+			"language" : "CXX",
+			"source" : "C:/Users/NOBTG/Documents/Projects/JNILibrary/org_example_Main.cpp"
+		}
+	}
+}

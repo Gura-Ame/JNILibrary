@@ -1,0 +1,11 @@
+{
+"rules": [
+{
+"primary-output": "CMakeFiles\\org_example_Native.dir\\org_example_Native.cpp.obj",
+"requires": [
+]
+}
+],
+"version": 0,
+"revision": 0
+}

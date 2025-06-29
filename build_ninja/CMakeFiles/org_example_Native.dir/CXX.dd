@@ -1,0 +1,3 @@
+ninja_dyndep_version = 1.0
+build CMakeFiles/org_example_Native.dir/org_example_Native.cpp.obj: dyndep
+

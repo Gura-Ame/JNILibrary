@@ -1,0 +1,22 @@
+# ninja log v7
+4	87	7729065738053147	CMakeFiles/org_example_Main.dir/org_example_Main.cpp.obj.ddi	c3873bd79c7060c0
+87	104	7729065738845448	CMakeFiles/org_example_Main.dir/CXX.dd	1b3bb8a4404839
+87	104	7729065738845448	C:/Users/NOBTG/Documents/Projects/JNILibrary/build_ninja/CMakeFiles/org_example_Main.dir/CXXModules.json	1b3bb8a4404839
+87	104	7729065738845448	CMakeFiles/org_example_Main.dir/org_example_Main.cpp.obj.modmap	1b3bb8a4404839
+105	341	7729065739002897	CMakeFiles/org_example_Main.dir/org_example_Main.cpp.obj	54ca25a49a89b206
+342	449	7729065741420693	C:/Users/NOBTG/Documents/Projects/JNILibrary/org_example_Main.dll	4abc8b20fa5746fa
+342	449	7729065741420693	C:/Users/NOBTG/Documents/Projects/JNILibrary/liborg_example_Main.dll.a	4abc8b20fa5746fa
+4	164	7729097663447687	CMakeFiles/org_example_Native.dir/org_example_Native.cpp.obj.ddi	aed54a53016cfaca
+164	185	7729097665063197	CMakeFiles/org_example_Native.dir/CXX.dd	105437d1f2714043
+164	185	7729097665063197	C:/Users/NOBTG/Documents/Projects/JNILibrary/build_ninja/CMakeFiles/org_example_Native.dir/CXXModules.json	105437d1f2714043
+164	185	7729097665063197	CMakeFiles/org_example_Native.dir/org_example_Native.cpp.obj.modmap	105437d1f2714043
+186	814	7729097665343415	CMakeFiles/org_example_Native.dir/org_example_Native.cpp.obj	fd7e3750dfb11378
+814	938	7729097671561345	C:/Users/NOBTG/Documents/Projects/JNILibrary/org_example_Native.dll	abf6fc5801839890
+814	938	7729097671561345	C:/Users/NOBTG/Documents/Projects/JNILibrary/liborg_example_Native.dll.a	abf6fc5801839890
+4	149	7729098647613843	CMakeFiles/org_example_Native.dir/org_example_Native.cpp.obj.ddi	aed54a53016cfaca
+150	169	7729098649064789	CMakeFiles/org_example_Native.dir/CXX.dd	105437d1f2714043
+150	169	7729098649064789	C:/Users/NOBTG/Documents/Projects/JNILibrary/build_ninja/CMakeFiles/org_example_Native.dir/CXXModules.json	105437d1f2714043
+150	169	7729098649064789	CMakeFiles/org_example_Native.dir/org_example_Native.cpp.obj.modmap	105437d1f2714043
+169	797	7729098649256701	CMakeFiles/org_example_Native.dir/org_example_Native.cpp.obj	fd7e3750dfb11378
+797	924	7729098655536747	C:/Users/NOBTG/Documents/Projects/JNILibrary/org_example_Native.dll	abf6fc5801839890
+797	924	7729098655536747	C:/Users/NOBTG/Documents/Projects/JNILibrary/liborg_example_Native.dll.a	abf6fc5801839890

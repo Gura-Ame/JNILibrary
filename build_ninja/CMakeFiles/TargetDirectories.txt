@@ -1,0 +1,3 @@
+C:/Users/NOBTG/Documents/Projects/JNILibrary/build_ninja/CMakeFiles/org_example_Native.dir
+C:/Users/NOBTG/Documents/Projects/JNILibrary/build_ninja/CMakeFiles/edit_cache.dir
+C:/Users/NOBTG/Documents/Projects/JNILibrary/build_ninja/CMakeFiles/rebuild_cache.dir
