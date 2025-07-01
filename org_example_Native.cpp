@@ -1,15 +1,20 @@
-#include <algorithm>
 #include <jvmti.h>
 #include <jni.h>
-#include <cstdio>
-#include <mutex>
 #include <string>
-#include <unordered_map>
 #include <vector>
+#include <unordered_map>
+#include <mutex>
+#include <cstdio>
+#include <algorithm>
+#include <cstring>
+#include <cstring>
 
-static std::pmr::unordered_map<std::string, std::vector<unsigned char>> classBytecodeMap;
-static std::mutex mapMutex;
-static jvmtiEnv *global_jvm_ti = nullptr;
+std::string toCppString(JNIEnv *env, jstring str) {
+    const char *utf = env->GetStringUTFChars(str, nullptr);
+    std::string name(utf);
+    env->ReleaseStringUTFChars(str, utf);
+    return name;
+}
 
 const char *getErrorName(const jvmtiError err) {
     switch (err) {
@@ -76,204 +81,171 @@ const char *getErrorName(const jvmtiError err) {
     }
 }
 
-void JNICALL classFileLoadHook(
-    jvmtiEnv *JvmTi,
-    JNIEnv *env,
-    jclass class_being_redefined,
-    jobject loader,
-    const char *name,
-    jobject protection_domain,
-    jint class_data_len,
-    const unsigned char *class_data,
-    jint *new_class_data_len,
-    unsigned char **new_class_data
-) {
-    printf("[+] Transforming class: %s\n", name);
+static std::pmr::unordered_map<std::string, std::vector<unsigned char> > classBytecodeMap;
+static std::mutex mapMutex;
+static jvmtiEnv *jvmti = nullptr;
+
+static void JNICALL onClassLoad(jvmtiEnv *, JNIEnv *, jclass, jobject, const char *name,
+                                jobject, jint, const unsigned char *, jint *out_len, unsigned char **out_data) {
     std::lock_guard lock(mapMutex);
+    auto it = classBytecodeMap.find(name);
+    if (it == classBytecodeMap.end()) return;
 
-    const auto it = classBytecodeMap.find(name);
-    if (it != classBytecodeMap.end()) {
-        const auto& data = it->second;
-        auto* new_data = static_cast<unsigned char*>(malloc(data.size()));
-        memcpy(new_data, data.data(), data.size());
-
-        *new_class_data_len = static_cast<jint>(data.size());
-        *new_class_data = new_data;
-
-        printf("[+] Replaced class: %s (%d bytes)\n", name, *new_class_data_len);
-    } else {
-        *new_class_data = nullptr;
-        *new_class_data_len = 0;
-    }
+    const auto &data = it->second;
+    *out_len = static_cast<jint>(data.size());
+    *out_data = static_cast<unsigned char *>(malloc(data.size()));
+    memcpy(*out_data, data.data(), data.size());
+    printf("[+] Replaced class: %s (%d bytes)\n", name, *out_len);
 }
 
-bool ensureJvmTi(JNIEnv *env) {
-    if (global_jvm_ti) return true;
+static bool initJvmti(JNIEnv *env) {
+    if (jvmti) return true;
 
     JavaVM *jvm = nullptr;
-    if (env->GetJavaVM(&jvm) != JNI_OK || jvm == nullptr) {
-        printf("[-] GetJavaVM failed\n");
-        return false;
-    }
-
-    if (jvm->GetEnv(reinterpret_cast<void **>(&global_jvm_ti), JVMTI_VERSION_1_2) != JNI_OK || !global_jvm_ti) {
-        printf("[-] GetEnv for JvmTi failed\n");
+    if (env->GetJavaVM(&jvm) != JNI_OK || !jvm ||
+        jvm->GetEnv(reinterpret_cast<void **>(&jvmti), JVMTI_VERSION_1_2) != JNI_OK || !jvmti) {
+        printf("[-] Failed to obtain JVMTI\n");
         return false;
     }
 
     jvmtiCapabilities caps{};
-    jvmtiError err = global_jvm_ti->GetPotentialCapabilities(&caps);
-    if (err != JVMTI_ERROR_NONE) {
-        printf("[-] GetPotentialCapabilities failed: %s\n", getErrorName(err));
+    if (jvmti->GetPotentialCapabilities(&caps) != JVMTI_ERROR_NONE ||
+        jvmti->AddCapabilities(&caps) != JVMTI_ERROR_NONE) {
+        printf("[-] Failed to add capabilities\n");
         return false;
     }
 
-    err = global_jvm_ti->AddCapabilities(&caps);
-    if (err != JVMTI_ERROR_NONE) {
-        printf("[-] AddCapabilities failed: %s\n", getErrorName(err));
-        return false;
-    }
-
-    jvmtiEventCallbacks callbacks{};
-    callbacks.ClassFileLoadHook = &classFileLoadHook;
-    global_jvm_ti->SetEventCallbacks(&callbacks, sizeof(callbacks));
-    global_jvm_ti->SetEventNotificationMode(JVMTI_ENABLE, JVMTI_EVENT_CLASS_FILE_LOAD_HOOK, nullptr);
-
+    jvmtiEventCallbacks cb{};
+    cb.ClassFileLoadHook = onClassLoad;
+    jvmti->SetEventCallbacks(&cb, sizeof(cb));
+    jvmti->SetEventNotificationMode(JVMTI_ENABLE, JVMTI_EVENT_CLASS_FILE_LOAD_HOOK, nullptr);
     return true;
 }
 
-extern "C"
-JNIEXPORT void JNICALL Java_org_example_Native_retransformClass
-  (JNIEnv* env, jclass clazz, jobjectArray classes, jobjectArray bytesArray) {
-    JavaVM* jvm;
-    env->GetJavaVM(&jvm);
+static std::string getInternalName(JNIEnv *env, jobject cls) {
+    jclass clsCls = env->FindClass("java/lang/Class");
+    jmethodID mid = env->GetMethodID(clsCls, "getName", "()Ljava/lang/String;");
+    jstring jname = (jstring) env->CallObjectMethod(cls, mid);
+    std::string name = toCppString(env, jname);
+    std::ranges::replace(name, '.', '/');
+    env->DeleteLocalRef(jname);
+    return name;
+}
 
-    if (!global_jvm_ti) {
-        jvm->GetEnv(reinterpret_cast<void **>(&global_jvm_ti), JVMTI_VERSION_1_2);
-        jvmtiCapabilities caps = {};
-        global_jvm_ti->GetPotentialCapabilities(&caps);
-        global_jvm_ti->AddCapabilities(&caps);
+extern "C" JNIEXPORT void JNICALL
+Java_org_example_Native_retransformClass(JNIEnv *env, jclass, jobjectArray classes, jobjectArray bytesArray) {
+    if (!initJvmti(env)) return;
 
-        jvmtiEventCallbacks callbacks = {};
-        callbacks.ClassFileLoadHook = classFileLoadHook;
-        global_jvm_ti->SetEventCallbacks(&callbacks, sizeof(callbacks));
-        global_jvm_ti->SetEventNotificationMode(JVMTI_ENABLE, JVMTI_EVENT_CLASS_FILE_LOAD_HOOK, nullptr);
-    }
-
-    jsize count = env->GetArrayLength(classes);
+    const jsize count = env->GetArrayLength(classes);
     if (count != env->GetArrayLength(bytesArray)) {
         printf("[-] Array length mismatch\n");
         return;
     }
 
-    std::lock_guard lock(mapMutex);
-    classBytecodeMap.clear();
+    std::vector<jclass> toRetransform; {
+        std::lock_guard lock(mapMutex);
+        classBytecodeMap.clear();
+        for (jsize i = 0; i < count; ++i) {
+            auto cls = static_cast<jclass>(env->GetObjectArrayElement(classes, i));
+            auto arr = static_cast<jbyteArray>(env->GetObjectArrayElement(bytesArray, i));
+            if (!cls || !arr) continue;
 
-    std::vector<jclass> toRetransform;
+            std::string name = getInternalName(env, cls);
+            jsize len = env->GetArrayLength(arr);
+            jbyte *data = env->GetByteArrayElements(arr, nullptr);
 
-    for (jsize i = 0; i < count; ++i) {
-        jobject classObj = env->GetObjectArrayElement(classes, i);
-        jclass klass = env->GetObjectClass(classObj);
-        auto byteArray = (jbyteArray) env->GetObjectArrayElement(bytesArray, i);
+            classBytecodeMap[name] = std::vector(
+                reinterpret_cast<unsigned char *>(data),
+                reinterpret_cast<unsigned char *>(data) + len
+            );
 
-        if (!classObj || !byteArray) continue;
+            jboolean mod = JNI_FALSE;
+            jvmti->IsModifiableClass(cls, &mod);
+            printf("Class %d modifiable: %s\n", i, mod ? "true" : "false");
 
-        jclass classClass = env->FindClass("java/lang/Class");
-        jmethodID getName = env->GetMethodID(classClass, "getName", "()Ljava/lang/String;");
-        auto nameStr = (jstring) env->CallObjectMethod(classObj, getName);
-
-        const char* utfName = env->GetStringUTFChars(nameStr, nullptr);
-        std::string internalName = utfName;
-        std::ranges::replace(internalName, '.', '/');
-        env->ReleaseStringUTFChars(nameStr, utfName);
-        env->DeleteLocalRef(nameStr);
-
-        jsize len = env->GetArrayLength(byteArray);
-        jbyte* data = env->GetByteArrayElements(byteArray, nullptr);
-
-        classBytecodeMap[internalName] = std::vector(reinterpret_cast<unsigned char *>(data), reinterpret_cast<unsigned char *>(data) + len);
-
-        jboolean modifiable = JNI_FALSE;
-        global_jvm_ti->IsModifiableClass(klass, &modifiable);
-        printf("Class %d is modifiable: %s\n", i, modifiable ? "true" : "false");
-
-        env->ReleaseByteArrayElements(byteArray, data, JNI_ABORT);
-        toRetransform.push_back(klass);
-
-        env->DeleteLocalRef(klass);
-        env->DeleteLocalRef(byteArray);
+            env->ReleaseByteArrayElements(arr, data, JNI_ABORT);
+            env->DeleteLocalRef(arr);
+            toRetransform.push_back(cls);
+        }
     }
 
-    jvmtiError err = global_jvm_ti->RetransformClasses(toRetransform.size(), toRetransform.data());
-    if (err != JVMTI_ERROR_NONE) {
-        printf("[-] RetransformClasses failed: %s\n", getErrorName(err));
-    } else {
-        printf("[+] Retransform success\n");
-    }
+    jvmtiError err = jvmti->RetransformClasses(toRetransform.size(), toRetransform.data());
+    printf("%s\n", err == JVMTI_ERROR_NONE ? "[+] Retransform success" : "[-] Retransform failed");
 }
 
-
-extern "C"
-JNIEXPORT void JNICALL Java_org_example_Native_redefineClass(JNIEnv *env, jclass clazz, jobjectArray classes,
-                                                             jobjectArray bytesArray) {
-    if (!ensureJvmTi(env)) return;
-    printf("[+]");
+extern "C" JNIEXPORT void JNICALL
+Java_org_example_Native_redefineClass(JNIEnv *env, jclass, jobjectArray classes, jobjectArray bytesArray) {
+    if (!initJvmti(env)) return;
 
     const jsize count = env->GetArrayLength(classes);
-    const jsize bytesCount = env->GetArrayLength(bytesArray);
-    if (count != bytesCount) {
+    if (count != env->GetArrayLength(bytesArray)) {
         printf("[-] Mismatched array lengths\n");
         return;
     }
 
     std::vector<jvmtiClassDefinition> defs(count);
-    std::vector<jbyte *> bytePtrs(count);
+    std::vector<jbyte *> ptrs(count);
     std::vector<jclass> classRefs(count);
-    std::vector<jbyteArray> byteArrayRefs(count);
+    std::vector<jbyteArray> arrayRefs(count);
 
     for (jsize i = 0; i < count; ++i) {
-        auto obj = (jclass) env->GetObjectArrayElement(classes, i);
-        auto byteArr = (jbyteArray) env->GetObjectArrayElement(bytesArray, i);
+        jclass cls = static_cast<jclass>(env->GetObjectArrayElement(classes, i));
+        jbyteArray arr = static_cast<jbyteArray>(env->GetObjectArrayElement(bytesArray, i));
+        classRefs[i] = cls;
+        arrayRefs[i] = arr;
 
-        classRefs[i] = obj;
-        byteArrayRefs[i] = byteArr;
-
-        if (!obj || !byteArr) {
-            printf("[-] Null class or byte[] at index %d\n", i);
+        if (!cls || !arr) {
             defs[i] = {nullptr, 0, nullptr};
-            bytePtrs[i] = nullptr;
             continue;
         }
 
-        jsize len = env->GetArrayLength(byteArr);
-        jbyte *data = env->GetByteArrayElements(byteArr, nullptr);
-
-        if (!data) {
-            printf("[-] Failed to get byte array at index %d\n", i);
-            defs[i] = {nullptr, 0, nullptr};
-            bytePtrs[i] = nullptr;
-            continue;
-        }
-
-        defs[i] = {obj, len, reinterpret_cast<const unsigned char *>(data)};
-        bytePtrs[i] = data;
+        jsize len = env->GetArrayLength(arr);
+        jbyte *data = env->GetByteArrayElements(arr, nullptr);
+        defs[i] = {cls, len, reinterpret_cast<unsigned char *>(data)};
+        ptrs[i] = data;
     }
 
-    // 安全地呼叫
-    jvmtiError err = global_jvm_ti->RedefineClasses(count, defs.data());
-    if (err != JVMTI_ERROR_NONE) {
-        printf("[-] RedefineClasses failed: %s\n", getErrorName(err));
-    } else {
-        printf("[+] RedefineClasses success for %d classes\n", count);
-    }
+    jvmtiError err = jvmti->RedefineClasses(count, defs.data());
+    printf("%s for %d classes%s", err == JVMTI_ERROR_NONE ? "[+] Redefine success" : "[-] Redefine failed", count, err==JVMTI_ERROR_NONE ? ".\n" : getErrorName(err));
 
-    // 釋放所有元素
     for (jsize i = 0; i < count; ++i) {
-        if (bytePtrs[i]) {
-            env->ReleaseByteArrayElements(byteArrayRefs[i], bytePtrs[i], JNI_ABORT);
-        }
+        if (ptrs[i]) env->ReleaseByteArrayElements(arrayRefs[i], ptrs[i], JNI_ABORT);
         if (classRefs[i]) env->DeleteLocalRef(classRefs[i]);
-        if (byteArrayRefs[i]) env->DeleteLocalRef(byteArrayRefs[i]);
+        if (arrayRefs[i]) env->DeleteLocalRef(arrayRefs[i]);
+    }
+}
+
+static jclass optionalClass;
+static jmethodID ofMethod;
+static jmethodID emptyMethod;
+
+void prepareOptional(JNIEnv *env) {
+    if (optionalClass == nullptr) {
+        optionalClass = env->FindClass("java/util/Optional");
+    }
+    if (ofMethod == nullptr) {
+        ofMethod = env->GetStaticMethodID(optionalClass, "of", "(Ljava/lang/Object;)Ljava/util/Optional;");
+    }
+    if (emptyMethod == nullptr) {
+        emptyMethod = env->GetStaticMethodID(optionalClass, "empty", "()Ljava/util/Optional;");
+    }
+}
+
+jobject ofOptional(JNIEnv *env, jobject obj) {
+    prepareOptional(env);
+
+    if (obj != nullptr) {
+        return env->CallStaticObjectMethod(optionalClass, ofMethod, obj);
     }
 
+    return env->CallStaticObjectMethod(optionalClass, emptyMethod);
+}
+
+extern "C" JNIEXPORT jobject JNICALL
+Java_org_example_Native_accessClass(JNIEnv *env, jclass, jstring className) {
+    std::string name = toCppString(env, className);
+    std::ranges::replace(name, '.', '/');
+
+    jclass cls = env->FindClass(name.c_str());
+    return ofOptional(env, cls);
 }

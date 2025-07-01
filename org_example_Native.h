@@ -23,6 +23,14 @@ JNIEXPORT void JNICALL Java_org_example_Native_redefineClass
 JNIEXPORT void JNICALL Java_org_example_Native_retransformClass
   (JNIEnv *, jclass, jobjectArray, jobjectArray);
 
+/*
+ * Class:     org_example_Native
+ * Method:    accessClass
+ * Signature: (Ljava/lang/String;)Ljava/util/Optional;
+ */
+JNIEXPORT jobject JNICALL Java_org_example_Native_accessClass
+  (JNIEnv *, jclass, jstring);
+
 #ifdef __cplusplus
 }
 #endif
